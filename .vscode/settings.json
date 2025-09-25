@@ -1,0 +1,28 @@
+{
+  "files.associations": {
+    "thread.h": "c",
+    "optional": "c",
+    "system_error": "c",
+    "array": "c",
+    "functional": "c",
+    "tuple": "c",
+    "type_traits": "c",
+    "utility": "c",
+    "synch.h": "c",
+    "gdt.h": "c",
+    "*.inc": "c",
+    "exception": "c",
+    "memory_resource": "c",
+    "iosfwd": "c",
+    "new": "c",
+    "ostream": "c",
+    "stop_token": "c",
+    "streambuf": "c",
+    "cstdlib": "c",
+    "atomic": "c",
+    "chrono": "c",
+    "cstdint": "c",
+    "random": "c",
+    "string.h": "c"
+  }
+}

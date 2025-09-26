@@ -28,3 +28,10 @@ core
 
 # macOS
 .DS_Store
+
+# 로컬환경셋팅
+/.devcontainer
+/.vscode/*
+!.vscode/
+!/.vscode/settings.json
+

@@ -40,6 +40,9 @@ static struct frame *vm_evict_frame(void);
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
+//데이터를 만들겠다는 약속을 설정하는 함수, load_segment한테서 aux 구조체를 받고
+// uninit_new를 생성한다, 페이지 폴트 전에 설정을 하는 함수 [unint으로 설정된
+//상태, 데이터는 아작 안올라감 ]
 bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
                                     bool writable, vm_initializer *init,
                                     void *aux) {
@@ -48,12 +51,26 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
   struct supplemental_page_table *spt = &thread_current()->spt;
 
   /* Check wheter the upage is already occupied or not. */
+  // upage라는 주소를 가보았더니 아무것도 없다(채워 넣어도 된다)
   if (spt_find_page(spt, upage) == NULL) {
     /* TODO: Create the page, fetch the initialier according to the VM type,
      * TODO: and then create "uninit" page struct by calling uninit_new. You
      * TODO: should modify the field after calling the uninit_new. */
+    struct page *page = malloc(sizeof(struct page));
+    if (type == VM_ANON) {
+      uninit_new(page, upage, init, type, aux, anon_initializer);
+    } else if (type == VM_FILE) {
+      uninit_new(page, upage, init, type, aux, file_backed_initializer);
+    }
+    page->writable = writable;
 
     /* TODO: Insert the page into the spt. */
+    if (!spt_insert_page(spt, page)) {
+      free(page);
+      return false;
+    }
+
+    return true;
   }
 err:
   return false;

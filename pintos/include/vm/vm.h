@@ -2,7 +2,6 @@
 #define VM_VM_H
 #include <stdbool.h>
 
-
 #include "threads/palloc.h"
 #include "threads/mmu.h"
 #include "kernel/hash.h"
@@ -50,7 +49,7 @@ struct page {
   struct frame *frame; /* Back reference for frame */
 
   /* Your implementation */
-  struct hash_elem elem;
+  struct hash_elem h_elem;
   bool writable;
 
   /* Per-type data are binded into the union.
@@ -91,7 +90,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-  struct hash *hash;
+  struct hash h;
 };
 
 #include "threads/thread.h"
@@ -104,17 +103,20 @@ bool spt_insert_page(struct supplemental_page_table *spt, struct page *page);
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page);
 
 void vm_init(void);
-bool vm_try_handle_fault(struct intr_frame *f, void *addr, bool user, bool write, bool not_present);
+bool vm_try_handle_fault(struct intr_frame *f, void *addr, bool user,
+                         bool write, bool not_present);
 
 #define vm_alloc_page(type, upage, writable) \
   vm_alloc_page_with_initializer((type), (upage), (writable), NULL, NULL)
-bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writable,
-                                    vm_initializer *init, void *aux);
+bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
+                                    bool writable, vm_initializer *init,
+                                    void *aux);
 void vm_dealloc_page(struct page *page);
 bool vm_claim_page(void *va);
 enum vm_type page_get_type(struct page *page);
 
-uint64_t page_hash_func(const struct hash_elem *e, void *aux);
-bool page_comp_func(const struct hash_elem *a, const struct hash_elem *b, void *aux);
+unsigned page_hash_func(const struct hash_elem *elem, void *aux UNUSED);
+bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b,
+                       void *aux UNUSED);
 
 #endif /* VM_VM_H */

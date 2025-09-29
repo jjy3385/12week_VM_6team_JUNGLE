@@ -2,6 +2,8 @@
 
 #include "vm/vm.h"
 
+
+#include "kernel/hash.h"
 #include "threads/malloc.h"
 #include "vm/inspect.h"
 
@@ -80,7 +82,6 @@ bool spt_insert_page(struct supplemental_page_table *spt, struct page *page) {
   if (hash_insert(&spt->h, &page->h_elem) == NULL) {
     succ = true;
   }
-
   return succ;
 }
 
@@ -113,6 +114,16 @@ static struct frame *vm_evict_frame(void) {
 static struct frame *vm_get_frame(void) {
   struct frame *frame = NULL;
   /* TODO: Fill this function. */
+  void *kva = palloc_get_page(PAL_USER);
+  if (!kva) {
+    PANIC("todo:swap-out");
+  }
+  frame = malloc(sizeof(struct frame));
+  if (!frame) {
+    PANIC("todo:?");
+  }
+  frame->kva = kva;
+  frame->page = NULL;
 
   ASSERT(frame != NULL);
   ASSERT(frame->page == NULL);
@@ -145,10 +156,15 @@ void vm_dealloc_page(struct page *page) {
 }
 
 /* Claim the page that allocate on VA. */
-bool vm_claim_page(void *va UNUSED) {
+bool vm_claim_page(void *va) {
   struct page *page = NULL;
   /* TODO: Fill this function */
-
+  struct supplemental_page_table *spt = &thread_current()->spt;
+  page = spt_find_page(spt, va);
+  /* 페이지 없는 경우 */
+  if (!page) {
+    PANIC("todo");
+  }
   return vm_do_claim_page(page);
 }
 
@@ -161,8 +177,7 @@ static bool vm_do_claim_page(struct page *page) {
   page->frame = frame;
 
   /* TODO: Insert page table entry to map page's VA to frame's PA. */
-
-  return swap_in(page, frame->kva);
+  return pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
 }
 
 /* Initialize new supplemental page table */
@@ -179,6 +194,11 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED) {
   /* TODO: Destroy all the supplemental_page_table hold by thread and
    * TODO: writeback all the modified contents to the storage. */
+
+unsigned page_hash_func(const struct hash_elem *elem, void *aux UNUSED) {
+  const struct page *p = hash_entry(elem, struct page, h_elem);
+
+  return hash_bytes(&p->va, sizeof(p->va));
 }
 
 bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b,
@@ -187,10 +207,3 @@ bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b,
   struct page *p_b = hash_entry(b, struct page, h_elem);
 
   return p_a->va > p_b->va;
-}
-
-unsigned page_hash_func(const struct hash_elem *elem, void *aux UNUSED) {
-  const struct page *p = hash_entry(elem, struct page, h_elem);
-
-  return hash_bytes(&p->va, sizeof(p->va));
-}

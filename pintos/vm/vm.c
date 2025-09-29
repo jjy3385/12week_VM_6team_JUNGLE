@@ -2,7 +2,6 @@
 
 #include "vm/vm.h"
 
-
 #include "kernel/hash.h"
 #include "threads/malloc.h"
 #include "vm/inspect.h"
@@ -177,7 +176,8 @@ static bool vm_do_claim_page(struct page *page) {
   page->frame = frame;
 
   /* TODO: Insert page table entry to map page's VA to frame's PA. */
-  return pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+  return pml4_set_page(thread_current()->pml4, page->va, frame->kva,
+                       page->writable);
 }
 
 /* Initialize new supplemental page table */
@@ -194,6 +194,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED) {
   /* TODO: Destroy all the supplemental_page_table hold by thread and
    * TODO: writeback all the modified contents to the storage. */
+}
 
 unsigned page_hash_func(const struct hash_elem *elem, void *aux UNUSED) {
   const struct page *p = hash_entry(elem, struct page, h_elem);
@@ -207,3 +208,4 @@ bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b,
   struct page *p_b = hash_entry(b, struct page, h_elem);
 
   return p_a->va > p_b->va;
+}

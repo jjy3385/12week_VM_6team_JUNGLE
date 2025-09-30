@@ -43,9 +43,8 @@ static struct frame *vm_evict_frame(void);
 //데이터를 만들겠다는 약속을 설정하는 함수, load_segment한테서 aux 구조체를 받고
 // uninit_new를 생성한다, 페이지 폴트 전에 설정을 하는 함수 [unint으로 설정된
 //상태, 데이터는 아작 안올라감 ]
-bool vm_alloc_page_with_initializer(enum vm_type type, void *upage,
-                                    bool writable, vm_initializer *init,
-                                    void *aux) {
+bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writable,
+                                    vm_initializer *init, void *aux) {
   ASSERT(VM_TYPE(type) != VM_UNINIT)
 
   struct supplemental_page_table *spt = &thread_current()->spt;
@@ -77,8 +76,7 @@ err:
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-struct page *spt_find_page(struct supplemental_page_table *spt,
-                           void *va UNUSED) {
+struct page *spt_find_page(struct supplemental_page_table *spt, void *va UNUSED) {
   struct page page;
   page.va = va;
 
@@ -127,9 +125,14 @@ static struct frame *vm_evict_frame(void) {
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
+/* 새로운 물리 프레임을 얻을 때 사용 */
 static struct frame *vm_get_frame(void) {
   struct frame *frame = NULL;
   /* TODO: Fill this function. */
+
+  /* 물리주소 할당
+   * PAL_USER 는 메모리 풀(커널/유저) 중 유저풀
+   */
   void *kva = palloc_get_page(PAL_USER);
   if (!kva) {
     PANIC("todo:swap-out");
@@ -138,6 +141,7 @@ static struct frame *vm_get_frame(void) {
   if (!frame) {
     PANIC("todo:?");
   }
+  /* 프레임 초기화 */
   frame->kva = kva;
   frame->page = NULL;
 
@@ -153,9 +157,8 @@ static void vm_stack_growth(void *addr UNUSED) {}
 static bool vm_handle_wp(struct page *page UNUSED) {}
 
 /* Return true on success */
-bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
-                         bool user UNUSED, bool write UNUSED,
-                         bool not_present UNUSED) {
+bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED, bool user UNUSED,
+                         bool write UNUSED, bool not_present UNUSED) {
   struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
   struct page *page = NULL;
   /* TODO: Validate the fault */
@@ -172,6 +175,7 @@ void vm_dealloc_page(struct page *page) {
 }
 
 /* Claim the page that allocate on VA. */
+/* 유저가상주소(va)에 대한 페이지를 찾아서 vm_do_claim_page()로 전달 */
 bool vm_claim_page(void *va) {
   struct page *page = NULL;
   /* TODO: Fill this function */
@@ -179,22 +183,37 @@ bool vm_claim_page(void *va) {
   page = spt_find_page(spt, va);
   /* 페이지 없는 경우 */
   if (!page) {
-    PANIC("todo");
+    PANIC("todo:");
   }
   return vm_do_claim_page(page);
 }
 
 /* Claim the PAGE and set up the mmu. */
+/* 페이지와 프레임을 매핑 */
 static bool vm_do_claim_page(struct page *page) {
   struct frame *frame = vm_get_frame();
+  if (!frame) {
+    return false;
+  }
 
   /* Set links */
   frame->page = page;
   page->frame = frame;
 
   /* TODO: Insert page table entry to map page's VA to frame's PA. */
-  return pml4_set_page(thread_current()->pml4, page->va, frame->kva,
-                       page->writable);
+
+  /* 페이지 테이블 매핑 */
+  if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
+    return false;
+  }
+  /* 페이지 타입에 따른 page->operations 에 매핑된 함수 호출
+   * 첫 로딩 시 uninit -> lazy_load_segment
+   * 이미 초기화된 페이지인 경우 swap_in
+   */
+  if (page->uninit.init != NULL) {
+    return page->uninit.init(page, frame->kva);
+  }
+  return swap_in(page, frame->kva);
 }
 
 /* Initialize new supplemental page table */
@@ -219,8 +238,7 @@ unsigned page_hash_func(const struct hash_elem *elem, void *aux UNUSED) {
   return hash_bytes(&p->va, sizeof(p->va));
 }
 
-bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b,
-                       void *aux UNUSED) {
+bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED) {
   struct page *p_a = hash_entry(a, struct page, h_elem);
   struct page *p_b = hash_entry(b, struct page, h_elem);
 

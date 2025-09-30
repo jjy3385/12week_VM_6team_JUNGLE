@@ -820,13 +820,22 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool setup_stack(struct intr_frame *if_) {
   bool success = false;
+  /* 페이지 하나 크기만큼 프레임 할당 받음 -> 그 페이지의 시작주소
+   * RSP 는 수정 X 스택의 가장 높은 주소를 가르키고 있어야함  */
   void *stack_bottom = (void *)(((uint8_t *)USER_STACK) - PGSIZE);
 
   /* TODO: Map the stack on stack_bottom and claim the page immediately.
    * TODO: If success, set the rsp accordingly.
    * TODO: You should mark the page is stack. */
   /* TODO: Your code goes here */
-
+  /* SPT에 페이지 할당: VM_MARKER_0는 스택이란걸 표시하는 용도  */
+  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
+    return false;
+  }
+  success = vm_claim_page(stack_bottom);
+  if (success) {
+    if_->rsp = USER_STACK;
+  }
   return success;
 }
 #endif /* VM */

@@ -304,7 +304,12 @@ int process_wait(tid_t child_tid) {
 /* Exit the process. This function is called by thread_exit (). */
 void process_exit(void) {
   struct thread *curr = thread_current();
+  // 실행중인 프로그램 파일 닫기 전에 쓰기 금지를 해제
+  if (curr->running_file != NULL) {
+    file_allow_write(curr->running_file);
   file_close(curr->running_file);
+    curr->running_file = NULL;
+  }
 
   for (int fd = 2; fd < FDT_SIZE; fd++) {
     if (curr->fdt[fd] != NULL) {
@@ -596,8 +601,12 @@ static bool load(
 done:
   /* We arrive here whether the load is successful or not. */
   palloc_free_page(fn_copy);
-
-  if (!success) file_close(file);
+  // 이미 file_deny_write()가 걸려 있었다면 이를 되돌린 뒤 파일을 닫도록 수정
+  if (!success && file != NULL) {
+    file_allow_write(file);
+    file_close(file);
+    t->running_file = NULL;
+  }
   return success;
 }
 

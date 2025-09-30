@@ -835,7 +835,7 @@ static bool setup_stack(struct intr_frame *if_) {
    * TODO: You should mark the page is stack. */
   /* TODO: Your code goes here */
   /* SPT에 페이지 할당: VM_MARKER_0는 스택이란걸 표시하는 용도  */
-  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {
+  if (!vm_alloc_page(VM_ANON, stack_bottom, true)) {
     return false;
   }
   success = vm_claim_page(stack_bottom);

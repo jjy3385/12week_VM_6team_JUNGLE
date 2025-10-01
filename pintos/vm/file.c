@@ -47,7 +47,7 @@ static void file_backed_destroy(struct page *page) {
     file_write_at(file_page->file, page->frame->kva, file_page->read_bytes, file_page->ofs);
   }
 
-  if (page->frame != NULL) vm_frame_free(page->frame);
+  if (page->frame != NULL) vm_free_frame(page->frame);
 }
 
 /* Do the mmap */

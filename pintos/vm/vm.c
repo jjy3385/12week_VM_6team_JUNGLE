@@ -150,6 +150,22 @@ static struct frame *vm_get_frame(void) {
   return frame;
 }
 
+void vm_free_frame(struct frame *frame) {
+  if (frame == NULL) return;
+
+  // TODO: 프레임 테이블 도입 시 락, 전역 자료구조, 핀 처리 구현
+
+  // 페이지와의 양방향 연결을 끊기
+  if (frame->page != NULL) {
+    if (frame->page->frame == frame) frame->page->frame = NULL;
+    frame->page = NULL;
+  }
+  // 실제 물리 페이지 반환
+  palloc_free_page(frame->kva);
+  // 프레임 구조체 해제
+  free(frame);
+}
+
 /* Growing the stack. */
 /**
  * 페이지 폴트가 스택 영역에서 발생했고, 스택 확장 조건을 만족할 때

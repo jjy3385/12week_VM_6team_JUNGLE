@@ -56,6 +56,8 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
      * TODO: and then create "uninit" page struct by calling uninit_new. You
      * TODO: should modify the field after calling the uninit_new. */
     struct page *page = malloc(sizeof(struct page));
+    if (page == NULL) return false;
+
     if (type == VM_ANON) {
       uninit_new(page, upage, init, type, aux, anon_initializer);
     } else if (type == VM_FILE) {
@@ -291,8 +293,7 @@ static bool vm_do_claim_page(struct page *page) {
   frame->page = page;
   page->frame = frame;
 
-  if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
-    return false;
+  if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) return false;
 
   return swap_in(page, frame->kva);  // 페이지 타입별 swap_in 구현이 실제 초기화 작업을 수행.
 }
@@ -304,15 +305,76 @@ void supplemental_page_table_init(struct supplemental_page_table *spt) {
 }
 
 /* Copy supplemental page table from src to dst */
-bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
-                                  struct supplemental_page_table *src UNUSED) {
-  return false;  // 아직 구현되지 않았음을 명시적으로 알림.
+bool supplemental_page_table_copy(struct supplemental_page_table *dst,
+                                  struct supplemental_page_table *src) {
+  struct hash_iterator i;
+
+  hash_first(&i, &src->h);  //부모 SPT를 순회
+  while (hash_next(&i)) {
+    struct page *parent_page = hash_entry(hash_cur(&i), struct page, h_elem);
+    enum vm_type type = page_get_type(parent_page);
+    void *upage = parent_page->va;
+    bool writable = parent_page->writable;
+
+    switch (type) {
+      case VM_UNINIT:
+        /* UNINIT 페이지: 아직 물리 메모리에 로드되지 않은 페이지
+         * 부모의 초기화 정보를 그대로 자식에게 물려줌 */
+        struct uninit_page *uninit = &parent_page->uninit;
+        if (!vm_alloc_page_with_initializer(VM_UNINIT, upage, writable, uninit->init, uninit->aux))
+          return false;
+        break;
+
+      case VM_ANON:
+      case VM_FILE:
+        /* ANON 또는 FILE 페이지: 이미 물리 메모리에 내용이 로드된 페이지
+           독자적인 물리 공간을 가져야 함
+        */
+        if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, NULL, NULL)) {
+          return false;
+        }  // SPT 에 빈공간 할당
+
+        // 2. 빈공간을 자식의 페이지를 SPT에서 다시 찾음
+        struct page *child_page = spt_find_page(dst, upage);
+        if (child_page == NULL) {
+          supplemental_page_table_kill(dst);
+          return false;
+        }
+        // 3. 자식 페이지에 물리 프레임을 할당, 페이지 테이블에 매핑
+        if (!vm_claim_page(child_page->va)) {
+          supplemental_page_table_kill(dst);
+          return false;
+        }
+        memcpy(child_page->frame->kva, parent_page->frame->kva,
+               PGSIZE);  //빈공간에 부모 내용 자식에 쓰기 //커널 가상 주소(Kernel Virtual Address)
+        break;
+    }
+  }
+
+  // 모든 페이지 복사가 성공적으로 끝나면 true를 반환
+  return true;
 }
 
-/* Free the resource hold by the supplemental page table */
-void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED) {
+//보조 페이지 테이블(Supplemental Page Table, SPT)의 자원을 해제
+void supplemental_page_table_kill(struct supplemental_page_table *spt) {
   /* TODO: Destroy all the supplemental_page_table hold by thread and
    * TODO: writeback all the modified contents to the storage. */
+
+  struct hash_iterator i;
+
+  for (hash_first(&i, &spt->h); hash_cur(&i);) {
+    struct page *current_page = hash_entry(hash_cur(&i), struct page, h_elem);
+
+    //반복자를 안전하게 다음으로 미리 이동
+    hash_next(&i);
+
+    //저장해둔 current_page의 자원을 정리
+    destroy(current_page);
+    // hash에 current_page 제거
+    hash_delete(&spt->h, &current_page->h_elem);
+    // current_page 제거
+    free(current_page);
+  }
 }
 
 uint64_t page_hash_func(const struct hash_elem *elem, void *aux UNUSED) {

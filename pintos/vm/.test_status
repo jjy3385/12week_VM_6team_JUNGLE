@@ -1,1 +1,8 @@
-args-none FAIL
+fork-multiple PASS
+fork-close PASS
+args-none PASS
+read-boundary PASS
+fork-recursive PASS
+write-normal PASS
+fork-once PASS
+fork-read PASS

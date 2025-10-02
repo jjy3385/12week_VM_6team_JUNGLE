@@ -328,7 +328,10 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst,
   hash_first(&i, &src->h);  //부모 SPT를 순회
   while (hash_next(&i)) {
     struct page *parent_page = hash_entry(hash_cur(&i), struct page, h_elem);
-    enum vm_type type = page_get_type(parent_page);
+    enum vm_type type = parent_page->operations->type;
+    enum vm_type real_type = page_get_type(parent_page);
+    // printf("[!!!] But the value for switch is type = %d\n", real_type);
+    // printf("[!!!] But the value for switch is type = %d\n", type);
     void *upage = parent_page->va;
     bool writable = parent_page->writable;
 
@@ -337,7 +340,16 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst,
         /* UNINIT 페이지: 아직 물리 메모리에 로드되지 않은 페이지
          * 부모의 초기화 정보를 그대로 자식에게 물려줌 */
         struct uninit_page *uninit = &parent_page->uninit;
-        if (!vm_alloc_page_with_initializer(VM_UNINIT, upage, writable, uninit->init, uninit->aux))
+        // 부모 aux 복사
+        void *parent_aux = uninit->aux;
+        void *child_aux = NULL;
+        if (parent_aux != NULL) {
+          // aux가 어떤 구조체인지에 따라 크기를 알아야 함
+          size_t aux_size = sizeof(struct aux);  // 이걸 알아야 deep copy 가능
+          child_aux = malloc(aux_size);
+          memcpy(child_aux, parent_aux, aux_size);
+        }
+        if (!vm_alloc_page_with_initializer(real_type, upage, writable, uninit->init, child_aux))
           return false;
         break;
 
@@ -371,28 +383,50 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst,
   return true;
 }
 
-//보조 페이지 테이블(Supplemental Page Table, SPT)의 자원을 해제
 void supplemental_page_table_kill(struct supplemental_page_table *spt) {
   /* TODO: Destroy all the supplemental_page_table hold by thread and
    * TODO: writeback all the modified contents to the storage. */
-
+  if (spt == NULL) return;
+  if (hash_empty(&spt->h)) return;  // 비어있으면 바로 종료
+  struct list to_free;
+  list_init(&to_free);
   struct hash_iterator i;
-
-  for (hash_first(&i, &spt->h); hash_cur(&i);) {
+  hash_first(&i, &spt->h);
+  while (hash_next(&i)) {
     struct page *current_page = hash_entry(hash_cur(&i), struct page, h_elem);
-
-    //반복자를 안전하게 다음으로 미리 이동
-    hash_next(&i);
-
-    //저장해둔 current_page의 자원을 정리
-    destroy(current_page);
-    // hash에 current_page 제거
-    hash_delete(&spt->h, &current_page->h_elem);
-    // current_page 제거
-    free(current_page);
+    list_push_back(&to_free, &current_page->aux_elem);
+  }
+  while (!list_empty(&to_free)) {
+    struct list_elem *e = list_pop_front(&to_free);
+    struct page *page = list_entry(e, struct page, aux_elem);
+    // printf("[DEBUG] kill: va=%p, frame=%p, type=%d\n", page->va, page->frame,
+    // page_get_type(page));
+    destroy(page);
+    hash_delete(&spt->h, &page->h_elem);
+    free(page);
   }
 }
 
+// void supplemental_page_table_kill(struct supplemental_page_table *spt) {
+//   /* TODO: Destroy all the supplemental_page_table hold by thread and
+//    * TODO: writeback all the modified contents to the storage. */
+
+//   struct hash_iterator i;
+
+//   for (hash_first(&i, &spt->h); hash_cur(&i);) {
+//     struct page *current_page = hash_entry(hash_cur(&i), struct page, h_elem);
+
+//     //반복자를 안전하게 다음으로 미리 이동
+//     hash_next(&i);
+
+//     //저장해둔 current_page의 자원을 정리
+//     destroy(current_page);
+//     // hash에 current_page 제거
+//     hash_delete(&spt->h, &current_page->h_elem);
+//     // current_page 제거
+//     free(current_page);
+//   }
+// }
 uint64_t page_hash_func(const struct hash_elem *elem, void *aux UNUSED) {
   const struct page *p = hash_entry(elem, struct page, h_elem);
 
@@ -403,5 +437,5 @@ bool compare_hash_adrr(const struct hash_elem *a, const struct hash_elem *b, voi
   struct page *p_a = hash_entry(a, struct page, h_elem);
   struct page *p_b = hash_entry(b, struct page, h_elem);
 
-  return p_a->va > p_b->va;
+  return p_a->va < p_b->va;
 }
